@@ -188,3 +188,89 @@ That answer signals real-world readiness.
         
 🧠 One Sentence to Remember
 Secure connectivity is as much about process as it is about packets.
+
+
+What you’re getting below (GCP / Iowa us-central1):
+        VPC + subnet (placeholders for 10.x.x.x/xx)
+        Firewall rules so the HTTPS URL is ONLY reachable from VPN/TGW CIDRs
+        Managed Instance Group (MIG) behind an Internal HTTPS Load Balancer (so it’s only reachable over VPN)
+        Self-signed cert generated at boot on each VM (simple)
+        Startup script that:
+                installs Nginx + Python
+                hosts a tiny internal app endpoint
+                includes a basic “write/read to Tokyo RDS” Python test script (students wire the DB params)
+            Optional: Cloud NAT (so instances can apt-get without making the service public)
+        This assumes AWS↔GCP VPN/BGP (Lab 4A) already exists and routes are working.
+
+Lab 4A-2 — GCP MIG “NY Branch” (Compute Only) + Private HTTPS + Tokyo RDS Access
+What changes from AWS Lab 2
+
+        1) In GCP, you do not use CloudFront as the entrypoint here.
+                --> This “NY branch” app is private-only: reachable via VPN/TGW only.
+        2) The VM/MIG must connect to Tokyo RDS across the VPN corridor.
+        3) No DB resources in GCP. Ever.
+
+Terraform Skeleton (GCP)
+
+Naming convention suggestion for NY Japanese-town flavor: nihonmachi-* (NY branch “Japan Town”)
+Region: us-central1 (Iowa)
+
+providers.tf
+variables.tf
+network.tf
+Optional: Cloud NAT (so instances can install packages without being public)
+nat.tf (optional but recommended)
+Firewall: allow HTTPS only from VPN/TGW, and allow health checks internally
+firewall.tf
+Service account + Secret access (password not in TF state)
+iam.tf
+Instance template with self-signed HTTPS + tiny app + Tokyo RDS test script
+compute.tf
+Internal HTTPS Load Balancer (private URL over VPN only)
+ilb.tf
+startup.sh.tftpl (VM bootstrap)
+Create a file named startup.sh.tftpl:
+
+How Students Verify It (Deliverables)
+Deliverable 1 — Private-only access proof
+        Show that the internal LB IP works from inside VPN only
+        Show it does not work from the public internet
+
+Commands:
+
+        gcloud compute forwarding-rules describe nihonmachi-fr01 --region us-central1
+
+
+From a host inside the VPN corridor:
+
+        curl -k https://<INTERNAL_LB_IP>/health
+        curl -k https://<INTERNAL_LB_IP>/
+
+Deliverable 2 — MIG proof
+
+        gcloud compute instance-groups managed list --regions us-central1
+        gcloud compute instances list --filter="name~nihonmachi-app"
+
+Deliverable 3 — Tokyo RDS connectivity proo
+From the VM (SSH via IAP or internal bastion), run:
+
+        source /etc/profile.d/tokyo_rds.sh
+        python3 /usr/local/bin/rds_test.py
+
+You submit the JSON output.
+Deliverable 4 — Process proof (PSK discipline reminder)
+Students must write 6–10 lines:
+        how PSKs were generated and shared (out-of-band)
+        why secrets must not go in Terraform state
+        what would be considered a compliance mistake (PHI in logs, local DB, etc.)
+
+Restrictions reminders (repeat to them)
+        No databases in GCP
+        No PHI in logs.
+        Only private access over VPN corridor.
+        Passwords/secrets must not be hardcoded in TF or Git.
+
+
+
+
+
